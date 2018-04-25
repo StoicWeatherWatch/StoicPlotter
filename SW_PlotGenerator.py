@@ -37,9 +37,56 @@ def logerr(msg):
 
 
 class SW_PlotGenerator(weewx.reportengine.ReportGenerator):
+    """
+    This genorates plots in weewx. It is a drop in replacement for ImageGenerator.
+    """
 
     def run(self):
         """
         This is called by weewx to make the plots
         """
-
+        pass
+        
+    def Gen_line_Plot(self):
+        """
+        This creats a line plot_type. (One of three types supported in ImageGenerator)
+        """
+        pass
+    
+    def Gen_bar_Plot(self):
+        """
+        This creats a bar plot_type. (One of three types supported in ImageGenerator)
+        """
+        pass
+    
+    def Gen_vector_Plot(self):
+        """
+        This creats a vector plot_type. (One of three types supported in ImageGenerator)
+        """
+        pass
+    
+    def Gen_dot_Plot(self):
+        """
+        This creats a dot plot_type. This does not connect the dots as in a line plot. Usefull for wind direction.
+        """
+        pass
+    
+    def Gen_windSplit_Plot(self):
+        """
+        This creats a windSplit plot_type. This is a line plot for wind speed above a dot plot of wind direction.
+        """
+        pass
+    
+     def Gen_lineTempDualLabel_Plot(self):
+        """
+        This creats a lineTempDualLabel plot_type. This is a line plot for tempriture with the standard unit on the left and 
+        the opposit unit on the right (F or C).
+        """
+        pass
+    
+    def Gen_lineMultiUnit_Plot(self):
+        """
+        This creats a lineMultiUnit plot_type. This is a line plot with two different data types. The first data type will be given on the left axis 
+        and the second type will be on the right. Usufuall for plotting relative humidity and dewpoint on the same plot.
+        """
+        pass
