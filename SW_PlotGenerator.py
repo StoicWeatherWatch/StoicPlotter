@@ -45,7 +45,28 @@ class SW_PlotGenerator(weewx.reportengine.ReportGenerator):
         """
         This is called by weewx to make the plots
         """
-        pass
+        self.GetConf()
+
+    
+    def GetConf(self):
+        self.ImageGeneratorDict = self.skin_dict['ImageGenerator']
+        self.PlotTitlesDict = self.skin_dict.get('Labels', {}).get('Generic', {})
+        self.UnitFormatter  = weewx.units.Formatter.fromSkinDict(self.skin_dict)
+        self.UnitConverter  = weewx.units.Converter.fromSkinDict(self.skin_dict)
+        # determine how much logging is desired
+        self.LogSuccess = to_bool(self.ImageGeneratorDict.get('log_success', True))
+        # ensure that we are in a consistent right location
+        os.chdir(os.path.join(self.config_dict['WEEWX_ROOT'],
+                              self.skin_dict['SKIN_ROOT'],
+                              self.skin_dict['skin']))
+        
+        loginf("Using dri %s" %os.path.join(self.config_dict['WEEWX_ROOT'],
+                              self.skin_dict['SKIN_ROOT'],
+                              self.skin_dict['skin']))
+        
+        loginf("GetConf Done")
+        
+        
         
     def Gen_line_Plot(self):
         """
