@@ -4,6 +4,10 @@
 # Version 0.0.1
 # 2018-04-24
 
+# Each input is a key value pair from skin.conf. The key is a function name which is called with the value. 
+# using the object oriented api.
+# https://matplotlib.org/tutorials/introductory/lifecycle.html
+
 
 from __future__ import with_statement
 import time
@@ -21,6 +25,7 @@ from weeutil.weeutil import to_bool, to_int, to_float
 from weewx.units import ValueTuple
 
 import numpy as np
+import matplotlib
 import matplotlib.pyplot as plt
 
 def logmsg(level, msg):
@@ -45,26 +50,37 @@ class SW_PlotGenerator(weewx.reportengine.ReportGenerator):
         """
         This is called by weewx to make the plots
         """
+        loginf(" run")
         self.GetConf()
+        self.StartPlotting()
+        self.Gen_line_Plot()
 
     
     def GetConf(self):
+        loginf(" GetConf")
         self.ImageGeneratorDict = self.skin_dict['ImageGenerator']
         self.PlotTitlesDict = self.skin_dict.get('Labels', {}).get('Generic', {})
         self.UnitFormatter  = weewx.units.Formatter.fromSkinDict(self.skin_dict)
         self.UnitConverter  = weewx.units.Converter.fromSkinDict(self.skin_dict)
         # determine how much logging is desired
+        # TODO Limit logging when  self.LogSuccess is False
         self.LogSuccess = to_bool(self.ImageGeneratorDict.get('log_success', True))
         # ensure that we are in a consistent right location
         os.chdir(os.path.join(self.config_dict['WEEWX_ROOT'],
                               self.skin_dict['SKIN_ROOT'],
                               self.skin_dict['skin']))
         
-        loginf("Using dri %s" %os.path.join(self.config_dict['WEEWX_ROOT'],
-                              self.skin_dict['SKIN_ROOT'],
-                              self.skin_dict['skin']))
+        #loginf("Using dri %s" %os.path.join(self.config_dict['WEEWX_ROOT'],
+        #                      self.skin_dict['SKIN_ROOT'],
+       #                       self.skin_dict['skin']))
         
         loginf("GetConf Done")
+        
+    def StartPlotting(self):
+        loginf(" StartPlotting")
+        figHolder, axHolder = plt.subplots()
+        self.fig = figHolder
+        self.ax = axHolder
         
         
         
@@ -72,7 +88,17 @@ class SW_PlotGenerator(weewx.reportengine.ReportGenerator):
         """
         This creats a line plot_type. (One of three types supported in ImageGenerator)
         """
-        pass
+        loginf(" Gen_line_Plot")
+        home = os.path.expanduser("~")
+        FilePath = home+'/New.png'
+        loginf("Saving to %s" %FilePath)
+        
+        self.ax.plot([1,2,3,4], [1,4,9,16])
+        #plt.axis([0, 6, 0, 20])
+        self.fig.savefig(FilePath, dpi=None, facecolor='w', edgecolor='b',orientation='landscape', papertype=None, format=None,transparent=False, bbox_inches='tight', pad_inches=None,frameon=None)
+
+    
+    
     
     def Gen_bar_Plot(self):
         """
@@ -98,7 +124,7 @@ class SW_PlotGenerator(weewx.reportengine.ReportGenerator):
         """
         pass
     
-     def Gen_lineTempDualLabel_Plot(self):
+    def Gen_lineTempDualLabel_Plot(self):
         """
         This creats a lineTempDualLabel plot_type. This is a line plot for tempriture with the standard unit on the left and 
         the opposit unit on the right (F or C).
