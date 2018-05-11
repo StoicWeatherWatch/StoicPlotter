@@ -43,7 +43,7 @@ def logerr(msg):
 
 class SW_PlotGenerator(weewx.reportengine.ReportGenerator):
     """
-    This genorates plots in weewx. It is a drop in replacement for ImageGenerator.
+    This genorates plots in weewx. It is a drop in replacement for ImageGenerator. (Or it will be...)
     """
 
     def run(self):
@@ -89,11 +89,78 @@ class SW_PlotGenerator(weewx.reportengine.ReportGenerator):
         This creats a line plot_type. (One of three types supported in ImageGenerator)
         """
         loginf(" Gen_line_Plot")
-        home = os.path.expanduser("~")
-        FilePath = home+'/New.png'
+        #home = os.path.expanduser("~")
+        FilePath = "/home/weewx/public_html/Testing/"+'New.png'
+        if not os.path.isdir("/home/weewx/public_html/Testing/"):
+            loginf("Path Fail %s" %"/home/weewx/public_html/Testing/")
         loginf("Saving to %s" %FilePath)
         
-        self.ax.plot([1,2,3,4], [1,4,9,16])
+        # Get data
+        line_options = weeutil.weeutil.accumulateLeaves(self.ImageGeneratorDict["day_images"]["dayOutTemp"]["TempFARS"])
+        plot_options = weeutil.weeutil.accumulateLeaves(self.ImageGeneratorDict["day_images"]["dayOutTemp"])
+        # Test
+        #for keys,values in line_options:
+        #    loginf("line_options: %s - %s" %keys,values)
+        
+        # Look for the measurment desired. It may just be the line name or it might be given by data_type
+        MeasurmentName = line_options.get('data_type', "TempFARS")
+        
+        
+        binding = line_options['data_binding']
+        archive = self.db_binder.get_manager(binding)
+        plotgen_ts = archive.lastGoodStamp()
+        if not plotgen_ts:
+            loginf("Error  plotgen_ts")
+        
+        # Look for aggregation type:
+        aggregate_type = line_options.get('aggregate_type')
+        if aggregate_type in (None, '', 'None', 'none'):
+        # No aggregation specified.
+            aggregate_type = None
+            aggregate_interval = None
+        else :
+            try:
+            # Aggregation specified. Get the interval.
+                aggregate_interval = line_options.as_int('aggregate_interval')
+            except KeyError:
+                loginf( " aggregate interval required for aggregate type %s" % aggregate_type)
+                loginf( " line type %s skipped" % MeasurmentName)
+
+
+        # Obtain data
+        # Now its time to find and hit the database:
+        binding = line_options['data_binding']
+        # Super provides db_binder
+        archive = self.db_binder.get_manager(binding)
+        (minstamp, maxstamp, timeinc) = weeplot.utilities.scaletime(plotgen_ts - int(plot_options.get('time_length', 86400)), plotgen_ts)
+        #getSqlVectors
+        #The first element holds a ValueTuple with the start times of the aggregation interval.
+        #The second element holds a ValueTuple with the stop times of the aggregation interval.
+        #The third element holds a ValueTuple with the data aggregation over the interval.
+        (start_vec_t, stop_vec_t, data_vec_t) = archive.getSqlVectors((minstamp, maxstamp), MeasurmentName, aggregate_type=aggregate_type,aggregate_interval=aggregate_interval)
+        loginf( " line type %s" % MeasurmentName)
+        #loginf(type(start_vec_t))
+        #<class 'weewx.units.ValueTuple'>
+        #loginf(type(start_vec_t[0]))
+        #<type 'list'>
+        #loginf(''.join(str(e) for e in start_vec_t[0]))
+        #Mess of unix times
+        
+        #loginf(type(data_vec_t))
+        #<class 'weewx.units.ValueTuple'>
+        #loginf(type(data_vec_t[0]))
+        #<type 'list'>
+        #loginf(''.join(str(e) for e in data_vec_t[0]))
+        # mess of temps
+        loginf(type(data_vec_t[1]))
+        loginf(data_vec_t[1])
+        loginf(type(data_vec_t[2]))
+        loginf(data_vec_t[2])
+
+        
+        
+        
+        self.ax.plot(start_vec_t[0], data_vec_t[0])
         #plt.axis([0, 6, 0, 20])
         self.fig.savefig(FilePath, dpi=None, facecolor='w', edgecolor='b',orientation='landscape', papertype=None, format=None,transparent=False, bbox_inches='tight', pad_inches=None,frameon=None)
 
