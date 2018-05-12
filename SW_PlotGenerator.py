@@ -24,9 +24,9 @@ import weewx.units
 from weeutil.weeutil import to_bool, to_int, to_float
 from weewx.units import ValueTuple
 
-import numpy as np
+#import numpy as np
 import matplotlib
-import matplotlib.pyplot as plt
+#import matplotlib.pyplot as plt
 
 def logmsg(level, msg):
     syslog.syslog(level, 'SW_PlotGenerator: %s' % msg)
@@ -40,6 +40,12 @@ def loginf(msg):
 def logerr(msg):
     logmsg(syslog.LOG_ERR, 'ERROR: %s' % msg)
 
+DEFAULT_CONF = {"AltTargetDir" : "/home/weewx/public_html/Testing/",
+                "UseAltTargetDir" : True,
+                "make_large_images" : True,
+                "large_image_width" : 1200,
+                "large_image_height" : 800}
+
 
 class SW_PlotGenerator(weewx.reportengine.ReportGenerator):
     """
@@ -52,8 +58,10 @@ class SW_PlotGenerator(weewx.reportengine.ReportGenerator):
         """
         loginf(" run")
         self.GetConf()
-        self.StartPlotting()
-        self.Gen_line_Plot()
+        self.AddDefaultConf()
+        self.MakePlots()
+
+
 
     
     def GetConf(self):
@@ -72,32 +80,93 @@ class SW_PlotGenerator(weewx.reportengine.ReportGenerator):
         
         #loginf("Using dri %s" %os.path.join(self.config_dict['WEEWX_ROOT'],
         #                      self.skin_dict['SKIN_ROOT'],
-       #                       self.skin_dict['skin']))
+        #                       self.skin_dict['skin']))
+       
+        # Super might provide 'HTML_ROOT'
+        loginf("WEEWX_ROOT %s" %self.config_dict['WEEWX_ROOT'],)
+        loginf("HTML_ROOT %s" %self.config_dict["StdReport"]['HTML_ROOT'])
+        self.ImagesDir = os.path.join(self.config_dict['WEEWX_ROOT'],self.config_dict["StdReport"]['HTML_ROOT'])
+        loginf("self.ImagesDir %s" %self.ImagesDir)
+       
         
         loginf("GetConf Done")
+        
+    def AddDefaultConf(self):
+        """
+        This compairs the ImageGeneratorDict to defa
+        """
+        for key in DEFAULT_CONF:
+            if not (key in self.ImageGeneratorDict):
+                loginf("%s not in self.ImageGeneratorDict using DEFAULT_CONF" %key)
+                self.ImageGeneratorDict[key] = DEFAULT_CONF[key]
+        
+        if self.ImageGeneratorDict.get("UseAltTargetDir"):
+            self.ImagesDir =  self.ImageGeneratorDict.get("AltTargetDir")
+            # TODO double check real dir etc
+        
         
     def StartPlotting(self):
         loginf(" StartPlotting")
         figHolder, axHolder = plt.subplots()
         self.fig = figHolder
         self.ax = axHolder
+    
+    def MakePlots(self):
+        """
+        This takes the conf data produced by GetConf and loops over each plot to be made. The loop calls the correct subrotine for each plot. 
+        """
+        loginf(" MakePlots")
+        # Loop over each time scale set and then over each plot in that timescale
+        for TimeScaleOfPlot in self.ImageGeneratorDict.sections :
+            for PlotTitle in self.ImageGeneratorDict[TimeScaleOfPlot].sections :
+                loginf("Plotting %s : %s" %(TimeScaleOfPlot,PlotTitle))
+                
+                # Add the default settings at the top of ImageGenerator to this specific plot's dictionary
+                plot_options = weeutil.weeutil.accumulateLeaves(self.ImageGeneratorDict[TimeScaleOfPlot][PlotTitle])
+                
+                # Call the approprate subroutine for the plot_type
+                try:
+                    getattr(self, 'Gen_' + plot_options.get("plot_type") + '_Plot')(plot_options,PlotTitle,TimeScaleOfPlot)
+                except (AttributeError) as e:
+                    if plot_options.get("plot_type") is None:
+                        loginf("AttributeError - MakePlots - No plot_type specified - There should be a default in [ImageGenerator]")
+                    loginf("AttributeError - MakePlots - Cannot find function to handle, plot_type: %s" %plot_options.get("plot_type"))
+                    logerr("AttributeError - MakePlots - Cannot find function to handle, plot_type: %s" %plot_options.get("plot_type"))
+                    loginf(traceback.format_exc())
+                    loginf(e)
+                
+                
+        loginf(" MakePlots fins")
         
         
-        
-    def Gen_line_Plot(self):
+    def Gen_line_Plot(self, plot_options,PlotTitle,TimeScaleOfPlot):
         """
         This creats a line plot_type. (One of three types supported in ImageGenerator)
         """
         loginf(" Gen_line_Plot")
         #home = os.path.expanduser("~")
-        FilePath = "/home/weewx/public_html/Testing/"+'New.png'
-        if not os.path.isdir("/home/weewx/public_html/Testing/"):
-            loginf("Path Fail %s" %"/home/weewx/public_html/Testing/")
+        FilePath = self.ImagesDir + PlotTitle + '.png'
+        if not os.path.isdir(self.ImagesDir):
+            loginf("Path Fail %s" %self.ImagesDir)
         loginf("Saving to %s" %FilePath)
         
         # Get data
-        line_options = weeutil.weeutil.accumulateLeaves(self.ImageGeneratorDict["day_images"]["dayOutTemp"]["TempFARS"])
-        plot_options = weeutil.weeutil.accumulateLeaves(self.ImageGeneratorDict["day_images"]["dayOutTemp"])
+        # TODO handle mutiple lines
+        line_options = weeutil.weeutil.accumulateLeaves(plot_options.get("TempFARS"))
+        if line_options is None:
+            # TODO add real error handeling
+            return None
+        
+        #self.ax.plot(start_vec_t[0], data_vec_t[0])
+        
+        # Loop over each measurment to share the axis
+        for MeasurmentName in self.image_dict[TimeScaleOfPlot][PlotTitle].sections:
+            # First make a dictinary of all settings for this meansurment
+            MeasurmentPlotOptions = weeutil.weeutil.accumulateLeaves(self.image_dict[TimeScaleOfPlot][PlotTitle][MeasurmentName])
+            
+            # Next see if the MeasurmentName is the same as the database variable or is 'data_type' set seporately in skin.conf
+            MeasurmentNameDB = line_options.get('data_type', line_name)
+        
         # Test
         #for keys,values in line_options:
         #    loginf("line_options: %s - %s" %keys,values)
@@ -160,45 +229,45 @@ class SW_PlotGenerator(weewx.reportengine.ReportGenerator):
         
         
         
-        self.ax.plot(start_vec_t[0], data_vec_t[0])
+        
         #plt.axis([0, 6, 0, 20])
         self.fig.savefig(FilePath, dpi=None, facecolor='w', edgecolor='b',orientation='landscape', papertype=None, format=None,transparent=False, bbox_inches='tight', pad_inches=None,frameon=None)
 
     
     
     
-    def Gen_bar_Plot(self):
+    def Gen_bar_Plot(self, plot_options,PlotTitle,TimeScaleOfPlot):
         """
         This creats a bar plot_type. (One of three types supported in ImageGenerator)
         """
         pass
     
-    def Gen_vector_Plot(self):
+    def Gen_vector_Plot(self, plot_options,PlotTitle,TimeScaleOfPlot):
         """
         This creats a vector plot_type. (One of three types supported in ImageGenerator)
         """
         pass
     
-    def Gen_dot_Plot(self):
+    def Gen_dot_Plot(self, plot_options,PlotTitle,TimeScaleOfPlot):
         """
         This creats a dot plot_type. This does not connect the dots as in a line plot. Usefull for wind direction.
         """
         pass
     
-    def Gen_windSplit_Plot(self):
+    def Gen_windSplit_Plot(self, plot_options,PlotTitle,TimeScaleOfPlot):
         """
         This creats a windSplit plot_type. This is a line plot for wind speed above a dot plot of wind direction.
         """
         pass
     
-    def Gen_lineTempDualLabel_Plot(self):
+    def Gen_lineTempDualLabel_Plot(self, plot_options,PlotTitle,TimeScaleOfPlot):
         """
         This creats a lineTempDualLabel plot_type. This is a line plot for tempriture with the standard unit on the left and 
         the opposit unit on the right (F or C).
         """
         pass
     
-    def Gen_lineMultiUnit_Plot(self):
+    def Gen_lineMultiUnit_Plot(self, plot_options,PlotTitle,TimeScaleOfPlot):
         """
         This creats a lineMultiUnit plot_type. This is a line plot with two different data types. The first data type will be given on the left axis 
         and the second type will be on the right. Usufuall for plotting relative humidity and dewpoint on the same plot.
