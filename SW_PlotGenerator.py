@@ -25,7 +25,8 @@ from weeutil.weeutil import to_bool, to_int, to_float
 from weewx.units import ValueTuple
 
 #import numpy as np
-import matplotlib
+from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
+from matplotlib.figure import Figure
 #import matplotlib.pyplot as plt
 
 def logmsg(level, msg):
@@ -105,7 +106,7 @@ class SW_PlotGenerator(weewx.reportengine.ReportGenerator):
             # TODO double check real dir etc
         
         
-    def StartPlotting(self):
+    def SetupPlot(self):
         loginf(" StartPlotting")
         figHolder, axHolder = plt.subplots()
         self.fig = figHolder
@@ -114,6 +115,8 @@ class SW_PlotGenerator(weewx.reportengine.ReportGenerator):
     def MakePlots(self):
         """
         This takes the conf data produced by GetConf and loops over each plot to be made. The loop calls the correct subrotine for each plot. 
+        
+        Following https://matplotlib.org/gallery/api/agg_oo_sgskip.html#sphx-glr-gallery-api-agg-oo-sgskip-py
         """
         loginf(" MakePlots")
         # Loop over each time scale set and then over each plot in that timescale
@@ -126,7 +129,7 @@ class SW_PlotGenerator(weewx.reportengine.ReportGenerator):
                 
                 # Call the approprate subroutine for the plot_type
                 try:
-                    getattr(self, 'Gen_' + plot_options.get("plot_type") + '_Plot')(plot_options,PlotTitle,TimeScaleOfPlot)
+                    GenFunction = getattr(self, 'Gen_' + plot_options.get("plot_type") + '_Plot')
                 except (AttributeError) as e:
                     if plot_options.get("plot_type") is None:
                         loginf("AttributeError - MakePlots - No plot_type specified - There should be a default in [ImageGenerator]")
@@ -135,6 +138,9 @@ class SW_PlotGenerator(weewx.reportengine.ReportGenerator):
                     loginf(traceback.format_exc())
                     loginf(e)
                 
+                # TODO add error handeling
+                # seporated from getattr call to avoid catching exceptions in the function itself
+                GenFunction(plot_options,PlotTitle,TimeScaleOfPlot)
                 
         loginf(" MakePlots fins")
         
@@ -144,70 +150,83 @@ class SW_PlotGenerator(weewx.reportengine.ReportGenerator):
         This creats a line plot_type. (One of three types supported in ImageGenerator)
         """
         loginf(" Gen_line_Plot")
+        
+        loginf("Gen_line_Plot: Build Plot")
+        fig = Figure()
+        FigureCanvas(fig)
+        # We are making a single subplot
+        ax = fig.add_subplot(111)
+        
         #home = os.path.expanduser("~")
         FilePath = self.ImagesDir + PlotTitle + '.png'
         if not os.path.isdir(self.ImagesDir):
             loginf("Path Fail %s" %self.ImagesDir)
         loginf("Saving to %s" %FilePath)
         
-        # Get data
-        # TODO handle mutiple lines
-        line_options = weeutil.weeutil.accumulateLeaves(plot_options.get("TempFARS"))
-        if line_options is None:
-            # TODO add real error handeling
-            return None
+
+
+# TODO handle windvec which comes in as a complex
         
-        #self.ax.plot(start_vec_t[0], data_vec_t[0])
+        
+        
         
         # Loop over each measurment to share the axis
-        for MeasurmentName in self.image_dict[TimeScaleOfPlot][PlotTitle].sections:
+        for MeasurmentName in self.ImageGeneratorDict[TimeScaleOfPlot][PlotTitle].sections:
             # First make a dictinary of all settings for this meansurment
-            MeasurmentPlotOptions = weeutil.weeutil.accumulateLeaves(self.image_dict[TimeScaleOfPlot][PlotTitle][MeasurmentName])
+            MeasurmentPlotOptions = weeutil.weeutil.accumulateLeaves(self.ImageGeneratorDict[TimeScaleOfPlot][PlotTitle][MeasurmentName])
             
             # Next see if the MeasurmentName is the same as the database variable or is 'data_type' set seporately in skin.conf
-            MeasurmentNameDB = line_options.get('data_type', line_name)
-        
-        # Test
-        #for keys,values in line_options:
-        #    loginf("line_options: %s - %s" %keys,values)
-        
-        # Look for the measurment desired. It may just be the line name or it might be given by data_type
-        MeasurmentName = line_options.get('data_type', "TempFARS")
-        
-        
-        binding = line_options['data_binding']
-        archive = self.db_binder.get_manager(binding)
-        plotgen_ts = archive.lastGoodStamp()
-        if not plotgen_ts:
-            loginf("Error  plotgen_ts")
-        
-        # Look for aggregation type:
-        aggregate_type = line_options.get('aggregate_type')
-        if aggregate_type in (None, '', 'None', 'none'):
-        # No aggregation specified.
-            aggregate_type = None
-            aggregate_interval = None
-        else :
-            try:
-            # Aggregation specified. Get the interval.
-                aggregate_interval = line_options.as_int('aggregate_interval')
-            except KeyError:
-                loginf( " aggregate interval required for aggregate type %s" % aggregate_type)
-                loginf( " line type %s skipped" % MeasurmentName)
+            MeasurmentNameDB = MeasurmentPlotOptions.get('data_type', MeasurmentName)
+            
+            # Look for aggregation type:
+            aggregate_type = MeasurmentPlotOptions.get('aggregate_type')
+            if aggregate_type in (None, '', 'None', 'none'):
+                # No aggregation specified.
+                aggregate_type = None
+                aggregate_interval = None
+            else :
+                try:
+                # Aggregation specified. Get the interval.
+                    aggregate_interval = MeasurmentPlotOptions.as_int('aggregate_interval')
+                except KeyError:
+                    loginf("Gen_line_Plot: aggregate interval required for aggregate type %s" % aggregate_type)
+                    loginf("Gen_line_Plot: line type %s skipped" % MeasurmentName)
+                    return 
 
+            
+            # Setup for DB access and figur out the time axis
+            binding = MeasurmentPlotOptions.get('data_binding')
+            if binding is not None:
+                loginf("Gen_line_Plot: binding %s " % binding)
+            # TODO Handle None
+            
+            # Super provides db_binder
+            archive = self.db_binder.get_manager(binding)
+            
+            # What time rage are we interested in
+            # self.gen_ts from super
+            plotgen_ts = self.gen_ts
+            if not plotgen_ts:
+                plotgen_ts = archive.lastGoodStamp()
+                if not plotgen_ts:
+                    plotgen_ts = time.time()
+                    
+            (minstamp, maxstamp, timeinc) = weeplot.utilities.scaletime(plotgen_ts - int(plot_options.get('time_length', 86400)), plotgen_ts)
+            
+            # Get the data from DB
+            (start_vec_t, stop_vec_t, data_vec_t) = archive.getSqlVectors((minstamp, maxstamp), MeasurmentNameDB, aggregate_type=aggregate_type,aggregate_interval=aggregate_interval)
+            
+            # Deal with line 157, and later, from imagegenerator
+            
+            loginf(type(data_vec_t[1]))
+            loginf(data_vec_t[1])
+            loginf(type(data_vec_t[2]))
+            loginf(data_vec_t[2])
+            
+            # Data goes in the plot
+            ax.plot(start_vec_t[0], data_vec_t[0])
+            
 
-        # Obtain data
-        # Now its time to find and hit the database:
-        binding = line_options['data_binding']
-        # Super provides db_binder
-        archive = self.db_binder.get_manager(binding)
-        (minstamp, maxstamp, timeinc) = weeplot.utilities.scaletime(plotgen_ts - int(plot_options.get('time_length', 86400)), plotgen_ts)
-        #getSqlVectors
-        #The first element holds a ValueTuple with the start times of the aggregation interval.
-        #The second element holds a ValueTuple with the stop times of the aggregation interval.
-        #The third element holds a ValueTuple with the data aggregation over the interval.
-        (start_vec_t, stop_vec_t, data_vec_t) = archive.getSqlVectors((minstamp, maxstamp), MeasurmentName, aggregate_type=aggregate_type,aggregate_interval=aggregate_interval)
-        loginf( " line type %s" % MeasurmentName)
         #loginf(type(start_vec_t))
         #<class 'weewx.units.ValueTuple'>
         #loginf(type(start_vec_t[0]))
@@ -221,17 +240,14 @@ class SW_PlotGenerator(weewx.reportengine.ReportGenerator):
         #<type 'list'>
         #loginf(''.join(str(e) for e in data_vec_t[0]))
         # mess of temps
-        loginf(type(data_vec_t[1]))
-        loginf(data_vec_t[1])
-        loginf(type(data_vec_t[2]))
-        loginf(data_vec_t[2])
+        
 
         
         
         
         
         #plt.axis([0, 6, 0, 20])
-        self.fig.savefig(FilePath, dpi=None, facecolor='w', edgecolor='b',orientation='landscape', papertype=None, format=None,transparent=False, bbox_inches='tight', pad_inches=None,frameon=None)
+        fig.savefig(FilePath, dpi=None, facecolor='w', edgecolor='b',orientation='landscape', papertype=None, format=None,transparent=False, bbox_inches='tight', pad_inches=None,frameon=None)
 
     
     
