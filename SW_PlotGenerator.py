@@ -1,8 +1,8 @@
 # Copyright (C) 2018 - All Rights Reserved
 # Stoic Plot Generator
 # SW_PlotGenerator
-# Version 0.0.1
-# 2018-04-24
+# Version 0.0.2
+# 2018-5-12
 
 # Each input is a key value pair from skin.conf. The key is a function name which is called with the value. 
 # using the object oriented api.
@@ -45,7 +45,9 @@ DEFAULT_CONF = {"AltTargetDir" : "/home/weewx/public_html/Testing/",
                 "UseAltTargetDir" : True,
                 "make_large_images" : True,
                 "large_image_width" : 1200,
-                "large_image_height" : 800}
+                "large_image_height" : 800,
+                "image_dpi" : 72,
+                "large_image_suffix" :"LARGE"}
 
 
 class SW_PlotGenerator(weewx.reportengine.ReportGenerator):
@@ -57,10 +59,15 @@ class SW_PlotGenerator(weewx.reportengine.ReportGenerator):
         """
         This is called by weewx to make the plots
         """
+        # TEMP Timer
+        # TODO REMOVE
+        StartTime = time.time()
         loginf(" run")
         self.GetConf()
-        self.AddDefaultConf()
+        self.ProcessConf()
         self.MakePlots()
+        StopTime = time.time()
+        loginf("run done - Time: %f s" %(StopTime-StartTime))
 
 
 
@@ -92,7 +99,7 @@ class SW_PlotGenerator(weewx.reportengine.ReportGenerator):
         
         loginf("GetConf Done")
         
-    def AddDefaultConf(self):
+    def ProcessConf(self):
         """
         This compairs the ImageGeneratorDict to defa
         """
@@ -127,9 +134,39 @@ class SW_PlotGenerator(weewx.reportengine.ReportGenerator):
                 # Add the default settings at the top of ImageGenerator to this specific plot's dictionary
                 plot_options = weeutil.weeutil.accumulateLeaves(self.ImageGeneratorDict[TimeScaleOfPlot][PlotTitle])
                 
+                # Get the plot type
+                PlotType = plot_options.get("plot_type")
+                #loginf(" PlotType %s" %PlotType)
+                # Sometimes plot_type is burried deep in the plot settings. Deeper than we have dug thus far. (PlotTitle)
+                # Here we dig to the level of the data to be plotted and look for plot_type
+                #===============================================================
+                # for key in plot_options:
+                #     loginf(" for key %s" %key)
+                # Does not contain sections?
+                # for key in self.ImageGeneratorDict[TimeScaleOfPlot][PlotTitle]:
+                #     loginf("2 for key %s" %key)
+                #===============================================================
+                # weeutil.weeutil.accumulateLeaves appears to remove sections?
+                for MeasurmentName in self.ImageGeneratorDict[TimeScaleOfPlot][PlotTitle].sections:
+                    #loginf(" for MeasurmentName %s" %MeasurmentName)
+                    #loginf(" self.ImageGeneratorDict[TimeScaleOfPlot][PlotTitle][MeasurmentName].get(plot_type) %s" %self.ImageGeneratorDict[TimeScaleOfPlot][PlotTitle][MeasurmentName].get("plot_type"))
+                    if self.ImageGeneratorDict[TimeScaleOfPlot][PlotTitle][MeasurmentName].get("plot_type") != None:
+                        #loginf(" self.ImageGeneratorDict[TimeScaleOfPlot][PlotTitle][MeasurmentName].get(plot_type) != None" )
+                        PlotType = self.ImageGeneratorDict[TimeScaleOfPlot][PlotTitle][MeasurmentName].get("plot_type")
+                # There can be only one plot type per plot. We assume the person who writes skin.conf provides only a single plot_type
+                loginf(" PlotType %s" %PlotType)
+                
+                #TODO COnvert the relavent plot options to int etc from string
+                # Subrotine
+                # make_large_images   
+                #large_image_width     = 1200
+                #large_image_height    =  800
+                #image_dpi             =  120
+
+                
                 # Call the approprate subroutine for the plot_type
                 try:
-                    GenFunction = getattr(self, 'Gen_' + plot_options.get("plot_type") + '_Plot')
+                    GenFunction = getattr(self, 'Gen_' + PlotType + '_Plot')
                 except (AttributeError) as e:
                     if plot_options.get("plot_type") is None:
                         loginf("AttributeError - MakePlots - No plot_type specified - There should be a default in [ImageGenerator]")
@@ -137,6 +174,7 @@ class SW_PlotGenerator(weewx.reportengine.ReportGenerator):
                     logerr("AttributeError - MakePlots - Cannot find function to handle, plot_type: %s" %plot_options.get("plot_type"))
                     loginf(traceback.format_exc())
                     loginf(e)
+        
                 
                 # TODO add error handeling
                 # seporated from getattr call to avoid catching exceptions in the function itself
@@ -241,13 +279,26 @@ class SW_PlotGenerator(weewx.reportengine.ReportGenerator):
         #loginf(''.join(str(e) for e in data_vec_t[0]))
         # mess of temps
         
-
+        loginf( "image_dpi %d" %int(plot_options.get("image_dpi")))
+        loginf( "image_width %d" %int(plot_options.get("image_width")))
+        loginf( "image_height %d" %int(plot_options.get("image_height")))
         
         
-        
+        fig.set_size_inches(int(plot_options.get("image_width"))/float(plot_options.get("image_dpi",100)), int(plot_options.get("image_height"))/float(plot_options.get("image_dpi",100)))
         
         #plt.axis([0, 6, 0, 20])
-        fig.savefig(FilePath, dpi=None, facecolor='w', edgecolor='b',orientation='landscape', papertype=None, format=None,transparent=False, bbox_inches='tight', pad_inches=None,frameon=None)
+        fig.savefig(FilePath, dpi=int(plot_options.get("image_dpi", 100)), facecolor='w', edgecolor='b',orientation='landscape', papertype=None, format=None,transparent=False, bbox_inches='tight', pad_inches=None,frameon=None)
+        
+        # Make a larger version of the same plot
+        # TODO Not full size 695 x 990 at 120 DPI
+        if plot_options.get("make_large_images") in (True, 'True', 'true','T', 't', 1):
+            FilePath = self.ImagesDir + PlotTitle + plot_options.get("large_image_suffix", "LG") + '.png'
+            
+            fig.set_size_inches(int(plot_options.get("large_image_width"))/float(plot_options.get("image_dpi",100)), int(plot_options.get("large_image_height"))/float(plot_options.get("image_dpi",100)))
+        
+            #plt.axis([0, 6, 0, 20])
+            fig.savefig(FilePath, dpi=int(plot_options.get("image_dpi", 100)), facecolor='w', edgecolor='b',orientation='landscape', papertype=None, format=None,transparent=False, bbox_inches='tight', pad_inches=None,frameon=None)
+        
 
     
     
@@ -256,36 +307,37 @@ class SW_PlotGenerator(weewx.reportengine.ReportGenerator):
         """
         This creats a bar plot_type. (One of three types supported in ImageGenerator)
         """
-        pass
+        loginf("Gen_bar_Plot")
+
     
     def Gen_vector_Plot(self, plot_options,PlotTitle,TimeScaleOfPlot):
         """
         This creats a vector plot_type. (One of three types supported in ImageGenerator)
         """
-        pass
+        loginf("Gen_vector_Plot")
     
     def Gen_dot_Plot(self, plot_options,PlotTitle,TimeScaleOfPlot):
         """
         This creats a dot plot_type. This does not connect the dots as in a line plot. Usefull for wind direction.
         """
-        pass
+        loginf("Gen_dot_Plot")
     
     def Gen_windSplit_Plot(self, plot_options,PlotTitle,TimeScaleOfPlot):
         """
         This creats a windSplit plot_type. This is a line plot for wind speed above a dot plot of wind direction.
         """
-        pass
+        loginf("Gen_windSplit_Plot")
     
     def Gen_lineTempDualLabel_Plot(self, plot_options,PlotTitle,TimeScaleOfPlot):
         """
         This creats a lineTempDualLabel plot_type. This is a line plot for tempriture with the standard unit on the left and 
         the opposit unit on the right (F or C).
         """
-        pass
+        loginf("Gen_lineTempDualLabel_Plot")
     
     def Gen_lineMultiUnit_Plot(self, plot_options,PlotTitle,TimeScaleOfPlot):
         """
         This creats a lineMultiUnit plot_type. This is a line plot with two different data types. The first data type will be given on the left axis 
         and the second type will be on the right. Usufuall for plotting relative humidity and dewpoint on the same plot.
         """
-        pass
+        loginf("Gen_lineMultiUnit_Plot")
