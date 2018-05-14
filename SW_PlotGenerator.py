@@ -43,7 +43,7 @@ def logerr(msg):
 
 DEFAULT_CONF = {"AltTargetDir" : "/home/weewx/public_html/Testing/",
                 "UseAltTargetDir" : True,
-                "make_large_images" : True,
+                "make_large_images" : False,
                 "large_image_width" : 1200,
                 "large_image_height" : 800,
                 "image_dpi" : 72,
@@ -279,6 +279,12 @@ class SW_PlotGenerator(weewx.reportengine.ReportGenerator):
         #loginf(''.join(str(e) for e in data_vec_t[0]))
         # mess of temps
         
+        # Set background colour
+        ImageBackColour = self.ConvertColoursToHEXRGBA(plot_options.get("image_background_color"))
+        PlotBackColour = self.ConvertColoursToHEXRGBA(plot_options.get("chart_background_color"))
+        fig.set_facecolor(ImageBackColour)
+        ax.set_facecolor(PlotBackColour)
+        
         loginf( "image_dpi %d" %int(plot_options.get("image_dpi")))
         loginf( "image_width %d" %int(plot_options.get("image_width")))
         loginf( "image_height %d" %int(plot_options.get("image_height")))
@@ -287,7 +293,9 @@ class SW_PlotGenerator(weewx.reportengine.ReportGenerator):
         fig.set_size_inches(int(plot_options.get("image_width"))/float(plot_options.get("image_dpi",100)), int(plot_options.get("image_height"))/float(plot_options.get("image_dpi",100)))
         
         #plt.axis([0, 6, 0, 20])
-        fig.savefig(FilePath, dpi=int(plot_options.get("image_dpi", 100)), facecolor='w', edgecolor='b',orientation='landscape', papertype=None, format=None,transparent=False, bbox_inches='tight', pad_inches=None,frameon=None)
+        fig.savefig(FilePath, dpi=int(plot_options.get("image_dpi", 100)),orientation='landscape', papertype=None, format=None,transparent=False, bbox_inches='tight', pad_inches=None,frameon=None)
+        #fig.savefig(FilePath, dpi=int(plot_options.get("image_dpi", 100)), facecolor='w', edgecolor='b',orientation='landscape', papertype=None, format=None,transparent=False, bbox_inches='tight', pad_inches=None,frameon=None)
+        
         
         # Make a larger version of the same plot
         # TODO Not full size 695 x 990 at 120 DPI
@@ -297,7 +305,7 @@ class SW_PlotGenerator(weewx.reportengine.ReportGenerator):
             fig.set_size_inches(int(plot_options.get("large_image_width"))/float(plot_options.get("image_dpi",100)), int(plot_options.get("large_image_height"))/float(plot_options.get("image_dpi",100)))
         
             #plt.axis([0, 6, 0, 20])
-            fig.savefig(FilePath, dpi=int(plot_options.get("image_dpi", 100)), facecolor='w', edgecolor='b',orientation='landscape', papertype=None, format=None,transparent=False, bbox_inches='tight', pad_inches=None,frameon=None)
+            fig.savefig(FilePath, dpi=int(plot_options.get("image_dpi", 100)),orientation='landscape', papertype=None, format=None,transparent=False, bbox_inches='tight', pad_inches=None,frameon=None)
         
 
     
@@ -341,3 +349,40 @@ class SW_PlotGenerator(weewx.reportengine.ReportGenerator):
         and the second type will be on the right. Usufuall for plotting relative humidity and dewpoint on the same plot.
         """
         loginf("Gen_lineMultiUnit_Plot")
+        
+    def ConvertColoursToHEXRGBA(self,ColourStringIn):
+        """
+        Takes one of the three formats supported by weewx and converts it to HEX RGBA string for matplotlib. 
+        In case of a colour name, 'blue', passes it back and assumes that it is a X11/CSS4 color name which matplotlib will handle
+        """
+        #loginf("ConvertColoursToHEXRGBA %s" %ColourStringIn)
+        #loginf("ColourStringIn[0:2] %s" %ColourStringIn[0:3])
+        #loginf("len(ColourStringIn)  %d" %len(ColourStringIn))
+        
+        ColourStringOut = "#000000"
+        
+        if(ColourStringIn is None):
+            return ColourStringOut
+        
+        #Test for Notation #RRGGBB or Notation #RRGGBBAA
+        if (ColourStringIn[0] == "#") and ( (len(ColourStringIn) == 7) or (len(ColourStringIn) == 9)):
+            HEXok = True
+            for i in range(len(ColourStringIn)-1):
+                if not (ColourStringIn[i+1] in ("0","1","2","3","4","5","6","7","8","9","a","A","b","c","C","d","D","e","E","f","F")):
+                    HEXok = False
+            if HEXok:
+                #loginf("ConvertColoursToHEXRGBA returning %s" %ColourStringIn)
+                return ColourStringIn
+        
+        # Test for Notation 0xBBGGRR (Still hex)
+        if (ColourStringIn[0:2] == "0x") and (len(ColourStringIn) == 8):
+            ColourStringOut = "#" + ColourStringIn[6:] + ColourStringIn[4:6] + ColourStringIn[2:4]
+            #loginf("ConvertColoursToHEXRGBA returning %s" %ColourStringOut)
+            return ColourStringOut
+        
+        #loginf("ConvertColoursToHEXRGBA returning %s" %ColourStringIn)
+        return ColourStringIn
+        
+        
+        
+        
